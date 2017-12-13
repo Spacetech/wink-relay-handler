@@ -55,6 +55,8 @@ void handle_relay_upper(MessageData *md)
 {
 	MQTTMessage *message = md->message;
 
+	LOGD("Received upper relay message - '%s' [length: %d]", message->payload, message->payloadlen);
+	
 	if (strncmp(message->payload, "ON", message->payloadlen) == 0) {
 		set_relay(RelayUpper, 1);
 	} else if (strncmp(message->payload, "OFF", message->payloadlen) == 0) {
@@ -65,6 +67,8 @@ void handle_relay_upper(MessageData *md)
 void handle_relay_lower(MessageData *md)
 {
 	MQTTMessage *message = md->message;
+	
+	LOGD("Received lower relay message - '%s' [length: %d]", message->payload, message->payloadlen);
 
 	if (strncmp(message->payload, "ON", message->payloadlen) == 0) {
 		set_relay(RelayLower, 1);
@@ -126,23 +130,21 @@ int mqtt_connect(Network *n, MQTTClient *c, char *buf, char *readbuf) {
 	return 0;
 }
 
-void mqtt_connect_loops(Network *n, MQTTClient *c, char *buf, char *readbuf, char *topic, char *prefix) {
+void mqtt_connect_loops(Network *n, MQTTClient *c, char *buf, char *readbuf, char *upperTopic, char *lowerTopic) {
 	LOGD("MQTT connect loops - start");
 		
 	while (mqtt_connect(n, c, buf, readbuf) != 0) {
 		sleep(10);
 	}
 
-	LOGD("Subscribing to relays");
-	
-	sprintf(topic, "%s/relays/upper", prefix);
-	while (MQTTSubscribe(c, topic, 0, handle_relay_upper) != 0) {
+	LOGD("Subscribing - '%s'", upperTopic);
+	while (MQTTSubscribe(c, upperTopic, 0, handle_relay_upper) != 0) {
 		LOGD("Failed to subscribe to relays/upper");
 		sleep(10);
 	}
 	
-	sprintf(topic, "%s/relays/lower", prefix);
-	while (MQTTSubscribe(c, topic, 0, handle_relay_lower) != 0) {
+	LOGD("Subscribing - '%s'", lowerTopic);
+	while (MQTTSubscribe(c, lowerTopic, 0, handle_relay_lower) != 0) {
 		LOGD("Failed to subscribe to relays/lower");
 		sleep(10);
 	}
@@ -200,7 +202,7 @@ int main() {
 	MQTTClient c;
 	MQTTMessage message;
 	struct rlimit limits;
-	char *prefix, topic[1024];
+	char *prefix, topic[1024], upperTopic[1024], lowerTopic[1024];
 	int timeout;
 
 	LOGD("Main");
@@ -262,7 +264,10 @@ int main() {
 	limits.rlim_max = RLIM_INFINITY;
 	setrlimit(RLIMIT_CORE, &limits);
 	
-	mqtt_connect_loops(&n, &c, buf, readbuf, topic, prefix);
+	sprintf(upperTopic, "%s/relays/upper", prefix);
+	sprintf(lowerTopic, "%s/relays/lower", prefix);
+	
+	mqtt_connect_loops(&n, &c, buf, readbuf, upperTopic, lowerTopic);
 
 	while (1) {
 		lseek(relay1, 0, SEEK_SET);
@@ -396,7 +401,7 @@ int main() {
 		ret = MQTTYield(&c, 100);
 		if (ret != 0) {
 			LOGE("MQTT yield failed - %d - going to reconnect", ret);
-			mqtt_connect_loops(&n, &c, buf, readbuf, topic, prefix);
+			mqtt_connect_loops(&n, &c, buf, readbuf, upperTopic, lowerTopic);
 		}
 	}
 }
