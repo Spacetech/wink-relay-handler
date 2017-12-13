@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2014 IBM Corp.
+ * Copyright (c) 2014, 2017 IBM Corp.
  *
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
@@ -12,6 +12,7 @@
  *
  * Contributors:
  *    Allan Stockdill-Mander - initial API and implementation and/or initial documentation
+ *    Ian Craggs - return codes from linux_read
  *******************************************************************************/
 
 #include "MQTTLinux.h"
@@ -25,7 +26,7 @@ char TimerIsExpired(Timer* timer)
 {
 	struct timeval now, res;
 	gettimeofday(&now, NULL);
-	timersub(&timer->end_time, &now, &res);		
+	timersub(&timer->end_time, &now, &res);
 	return res.tv_sec < 0 || (res.tv_sec == 0 && res.tv_usec <= 0);
 }
 
@@ -75,16 +76,17 @@ int linux_read(Network* n, unsigned char* buffer, int len, int timeout_ms)
 		int rc = recv(n->my_socket, &buffer[bytes], (size_t)(len - bytes), 0);
 		if (rc == -1)
 		{
-			if (errno != ENOTCONN && errno != ECONNRESET)
-			{
-				bytes = -1;
-				break;
-			}
-		} else if (rc == 0) {
-			return -1;
-		} else {
-			bytes += rc;
+			if (errno != EAGAIN && errno != EWOULDBLOCK)
+			  bytes = -1;
+			break;
 		}
+		else if (rc == 0)
+		{
+			bytes = 0;
+			break;
+		}
+		else
+			bytes += rc;
 	}
 	return bytes;
 }
@@ -97,7 +99,7 @@ int linux_write(Network* n, unsigned char* buffer, int len, int timeout_ms)
 	tv.tv_sec = 0;  /* 30 Secs Timeout */
 	tv.tv_usec = timeout_ms * 1000;  // Not init'ing this can cause strange errors
 
-	setsockopt(n->my_socket, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv,sizeof(struct timeval));
+	setsockopt(n->my_socket, SOL_SOCKET, SO_SNDTIMEO, (char *)&tv,sizeof(struct timeval));
 	int	rc = write(n->my_socket, buffer, len);
 	return rc;
 }
