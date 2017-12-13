@@ -21,7 +21,7 @@ Installing
 You'll need adb access to a rooted Wink Relay. Disable the existing Wink control software by running
 
 ```
-pm disable http://com.quirky.android .wink.projectone
+pm disable com.quirky.android.wink.projectone
 ```
 
 as root. Remount /system read-write:
@@ -39,7 +39,7 @@ rm /system/bin/edisonwink
 adb push wink-handler to /sdcard and then copy it over edisonwink and fix permissions:
 
 ```
-cp /sdcard/wink0handler /system/bin/edisonwink
+cp /sdcard/wink-handler /system/bin/edisonwink
 chmod 755 /system/bin/edisonwink
 ```
 
@@ -53,6 +53,10 @@ password=password
 clientid=Wink_Relay1
 topic_prefix=Relay1
 screen_timeout=20
+startup_power_on=1
+enable_upper_button=1
+enable_lower_button=1
+proximity_threshold=5000
 ```
 and put that in /sdcard/mqtt.ini on the Wink Relay.
 
@@ -63,6 +67,10 @@ password: Password used to authenticate to the MQTT broker (optional)
 clientid: Client ID passed to the broker (optional - Wink_Relay if not provided)  
 topic_prefix: Prefix to the topics presented by the device (optional - Relay if not provided)  
 screen_timeout: Time in seconds until the screen turns off after a touch or proximity detection (optional - 10s if not provided)
+startup_power_on: Set to 1 if you want the relays to turn on when the device powers up
+enable_upper_button: Set to 1 if you want the upper button to toggle the upper relay
+enable_lower_button: Set to 1 if you want the lower button to toggle the lower relay
+proximity_threshold: Proximity sensor threshold - Defaults to 5000
 
 Finally, reset your Relay.
 
@@ -140,3 +148,14 @@ Screen control
 --------------
 
 The screen will automatically turn on if the screen is touched and off 10 seconds later. It will also turn on and remain on if the proximity sensor is triggered, turning off 10 seconds after the last proximity detection.
+
+Debugging
+--------------
+
+Debug logs are written to logcat
+
+```
+adb logcat
+```
+
+Look for lines starting with with D/WinkHandler or E/WinkHandler
