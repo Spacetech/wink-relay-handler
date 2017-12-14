@@ -405,11 +405,23 @@ int main()
 		{
 			screenPower = '1';
 			write(screen, &screenPower, sizeof(screenPower));
+
+			LOGD("Screen state changed - on");
+
+			sprintf(topic, "%s/screen/state", config.topic_prefix);
+			sprintf(payload, "ON");
+			publishMessage(&client, topic, payload, true);
 		}
 		else if (!shouldTurnOnScreen && screenPower == '1')
 		{
 			screenPower = '0';
 			write(screen, &screenPower, sizeof(screenPower));
+
+			LOGD("Screen state changed - off");
+
+			sprintf(topic, "%s/screen/state", config.topic_prefix);
+			sprintf(payload, "OFF");
+			publishMessage(&client, topic, payload, true);
 		}
 
 		if ((rc = client.yield(100)) != 0)

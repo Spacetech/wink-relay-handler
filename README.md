@@ -144,6 +144,17 @@ Relay/relays/lower_state
 
 state topics.
 
+
+Screen
+------
+
+The screen will report its state to the following topic
+
+```
+Relay/screen/state
+```
+
+
 Screen control
 --------------
 
