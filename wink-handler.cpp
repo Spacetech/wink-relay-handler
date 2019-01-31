@@ -130,17 +130,20 @@ static int config_handler(void *data, const char *section, const char *name, con
 
 void publishMessage(MQTT::Client<IPStack, Countdown> *client, const char *topic, const char *payload, bool retain)
 {
-	MQTT::Message message;
-	message.qos = MQTT::QOS1;
-	message.retained = retain;
-	message.dup = false;
-	message.payload = (void *)payload;
-	message.payloadlen = strlen(payload);
-
-	int rc;
-	if ((rc = client->publish(topic, message)) != 0)
+	if (client->isConnected())
 	{
-		LOGE("Failed to publish message for topic '%s' - %d", topic, rc);
+		MQTT::Message message;
+		message.qos = MQTT::QOS1;
+		message.retained = retain;
+		message.dup = false;
+		message.payload = (void *)payload;
+		message.payloadlen = strlen(payload);
+
+		int rc;
+		if ((rc = client->publish(topic, message)) != 0)
+		{
+			LOGE("Failed to publish message for topic '%s' - %d", topic, rc);
+		}
 	}
 }
 
@@ -160,6 +163,7 @@ int main()
 	char proxdata[100];
 	int temperature, humidity, last_temperature = -1, last_humidity = -1;
 	long proximity;
+	int failedConnectionAttempts = 0;
 	struct rlimit limits;
 	char topic[1024], upperTopic[1024], lowerTopic[1024];
 
@@ -252,49 +256,6 @@ int main()
 
 	while (1)
 	{
-		if (!client.isConnected())
-		{
-			LOGE("IPStack - Connecting...");
-
-			ipstack.disconnect();
-
-			while ((rc = ipstack.connect(config.host, config.port)) != 0)
-			{
-				LOGE("IPStack - Failed to connect - %d\n", rc);
-				sleep(5);
-				continue;
-			}
-
-			LOGE("MQTT - Connecting...");
-
-			if ((rc = client.connect(data)) != 0)
-			{
-				LOGE("MQTT - Failed to connect - %d", rc);
-				sleep(5);
-				continue;
-			}
-
-			LOGE("MQTT - Connected");
-
-			rc = client.subscribe(upperTopic, MQTT::QOS2, onUpperTopicMessageReceived);
-			if (rc != 0)
-			{
-				LOGE("MQTT - Failed to subscribe to '%s' - %d\n", upperTopic, rc);
-				client.disconnect();
-				sleep(2);
-				continue;
-			}
-
-			rc = client.subscribe(lowerTopic, MQTT::QOS2, onLowerTopicMessageReceived);
-			if (rc != 0)
-			{
-				LOGE("MQTT - Failed to subscribe to '%s' - %d\n", lowerTopic, rc);
-				client.disconnect();
-				sleep(2);
-				continue;
-			}
-		}
-
 		lseek(upperRelay, 0, SEEK_SET);
 		read(upperRelay, buffer, sizeof(buffer));
 		if (upperRelayState != buffer[0])
@@ -424,10 +385,66 @@ int main()
 			publishMessage(&client, topic, payload, true);
 		}
 
-		if ((rc = client.yield(100)) != 0)
+		if (client.isConnected())
 		{
-			LOGE("MQTT - yield failed - %d\n", rc);
-			client.disconnect();
+			client.yield(100);
+		}
+		else
+		{
+			LOGD("IPStack - Connecting...");
+
+			ipstack.disconnect();
+
+			while ((rc = ipstack.connect(config.host, config.port)) != 0)
+			{
+				LOGE("IPStack - Failed to connect - %d\n", rc);
+				usleep(50000);
+				continue;
+			}
+
+			LOGD("MQTT - Connecting...");
+
+			if ((rc = client.connect(data)) == 0)
+			{
+				LOGD("MQTT - Connected");
+
+				rc = client.subscribe(upperTopic, MQTT::QOS2, onUpperTopicMessageReceived);
+				if (rc == 0)
+				{
+					rc = client.subscribe(lowerTopic, MQTT::QOS2, onLowerTopicMessageReceived);
+					if (rc == 0)
+					{
+						failedConnectionAttempts = 0;
+
+						LOGD("MQTT - All ready!");
+					}
+					else
+					{
+						LOGE("MQTT - Failed to subscribe to '%s' - %d\n", lowerTopic, rc);
+						client.disconnect();
+						usleep(50000);
+					}
+				}
+				else
+				{
+					LOGE("MQTT - Failed to subscribe to '%s' - %d\n", upperTopic, rc);
+					client.disconnect();
+					usleep(50000);
+				}
+			}
+			else
+			{
+				LOGE("MQTT - Failed to connect - %d", rc);
+				failedConnectionAttempts++;
+
+				if (failedConnectionAttempts > 5)
+				{
+					LOGE("MQTT - Too many failed connection attempts. Quitting...");
+					return 1;
+				}
+
+				usleep(50000);
+			}
 		}
 	}
 }
